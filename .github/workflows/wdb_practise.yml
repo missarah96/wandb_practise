@@ -1,80 +1,55 @@
-name: excercise-wandb
+import os
+import wandb
+import wandb.apis.reports as wr
 
-on: 
-  issue_comment:
-    types: [created]
+assert os.getenv('WANDB_API_KEY'), 'You must set the WANDB_API_KEY environment variable'
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
+def get_baseline_run(entity='hamelsmu', project='my-report-project', tag='baseline'):
+    "Get the baseline run from the project using tags"
 
-jobs:
-  ghapi-exercise:
-    if: (github.event.issue.pull_request != null) && contains(github.event.comment.body, '/wandb')
-    runs-on: ubuntu-latest
-    steps:        
+    api = wandb.Api()
+    runs = api.runs(f'{entity}/{project}', {"tags": {"$in": [tag]}})
+    assert len(runs) == 1, 'There must be exactly one run with the tag "baseline"'
+    return runs[0]
 
-    - name: Get repo contents
-      uses: actions/checkout@v3
+def compare_runs(entity='hamelsmu',
+                 project='cicd_demo',
+                 tag='baseline',
+                 run_id=None):
+    "Compare the current run to the baseline run."
 
-    - name: Install dependencies
-      run: |
-        pip install "wandb[workspaces]" ghapi
+    # Allow you to override the args with env variables
+    entity = os.getenv('WANDB_ENTITY') or entity
+    project = os.getenv('WANDB_PROJECT') or project
+    tag = os.getenv('BASELINE_TAG') or tag
+    run_id = os.getenv('RUN_ID') or run_id
+    assert run_id, 'You must set the RUN_ID environment variable or pass a `run_id` argument'
 
-    - name: Parse value from the command
-      id: get-runid-value
-      shell: python
-      run: |
-        import re, os
-        comment = os.getenv('PR_COMMENT', '')
-        match = re.search('/wandb[\s+](\S+)', comment)
+    baseline = get_baseline_run(entity=entity, project=project, tag=tag)
 
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-          if match:
-            print(f'VAL_FOUND=true', file=f)
-            print(f'RUN_ID={match.group(1)}', file=f)
-          else:
-            print(f'VAL_FOUND=false', file=f)
-      env:
-        PR_COMMENT: ${{ github.event.comment.body }}
+    # Create the report
+    report = wr.Report(entity=entity, project=project,
+                       title='Compare Runs',
+                       description=f"A comparison of runs, the baseline run name is {baseline.name}") 
 
-    - name: Generate the comparison report
-      if: steps.get-runid-value.outputs.VAL_FOUND == 'true'
-      id: wandb-report
-      run: python ./client/compare_runs.py
-      env:
-        WANDB_ENTITY: sarah_s96-university-of-british-columbia
-        WANDB_PROJECT: lineage-example
-        BASELINE_TAG: baseline
-        RUN_ID: "${{ steps.get-runid-value.outputs.RUN_ID }}"
-        WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+    # Filter the runs by ID in the Runset constructor directly
+    runset = wr.Runset(entity, project, "Run Comparison", filters={'ID': {'$in': [run_id, baseline.id]}})
 
-    - name: Make a comment with the GitHub API
-      uses: actions/github-script@v6
-      if: steps.wandb-report.outcome == 'success'
-      with:
-        script: |
-           var msg = `A comparison between the linked run and baseline is available [in this report](${process.env.REPORT_URL})`
-           github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: msg
-            });
-      env:
-        REPORT_URL: "${{ steps.wandb-report.outputs.REPORT_URL }}"
+    # Create a panel with the run comparison
+    pg = wr.PanelGrid(
+        runsets=[runset],
+        panels=[wr.RunComparer(diff_only='split', layout={'w': 24, 'h': 15})]
+    )
 
-    # Advanced version to label the PR
-    - name: Advanced- label the PR
-      uses: actions/github-script@v6
-      if: steps.wandb-report.outcome == 'success'
-      with:
-        github-token: ${{ secrets.MY_PAT }}  # We have to use our own token to trigger the action
-        script: |
-            github.rest.issues.addLabels({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              labels: ["experiment-linked"]
-             });
+    # Add the panel to the report
+    report.blocks = report.blocks[:1] + [pg] + report.blocks[1:]
+    report.save()
+
+    if os.getenv('CI'):  # is set to `true` in GitHub Actions
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:  # write the output variable REPORT_URL to the GITHUB_OUTPUT file
+            print(f'REPORT_URL={report.url}', file=f)
+    
+    return report.url
+
+if __name__ == '__main__':
+    print(f'The comparison report can be found at: {compare_runs()}')
