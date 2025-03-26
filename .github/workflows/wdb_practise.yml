@@ -3,12 +3,6 @@ name: excercise-wandb
 on:
   issue_comment:
     types: [created]
-  workflow_dispatch:  # Allow manual triggering
-    inputs:
-      branch:
-        description: 'Branch to run on'
-        required: true
-        default: 'main'  # Default to 'main', can be changed manually
 
 permissions:
   contents: read
@@ -17,6 +11,7 @@ permissions:
 
 jobs:
   ghapi-exercise:
+    # Trigger only if the comment contains "/wandb" and is associated with a pull request
     if: (github.event.issue.pull_request != null) && contains(github.event.comment.body, '/wandb')
     runs-on: ubuntu-latest
     steps:
@@ -56,7 +51,7 @@ jobs:
         # Set the environment variables
         entity = "sarah_s96-university-of-british-columbia"
         project = "lineage-example"
-        baseline_run_id = "0fkx3a7z"
+        baseline_run_id = "0fkx3a7z"  # You can update this to another baseline run ID if needed
         run_id = "${{ steps.get-runid-value.outputs.RUN_ID }}"
         wandb_api_key = os.getenv('WANDB_API_KEY')
 
