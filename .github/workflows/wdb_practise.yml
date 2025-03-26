@@ -102,7 +102,7 @@ jobs:
       uses: actions/github-script@v6
       if: steps.wandb-report.outcome == 'success'
       with:
-        github-token: ${{ secrets.MY_PAT }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}  # Use the built-in GitHub token
         script: |
             github.rest.issues.addLabels({
               issue_number: context.issue.number,
