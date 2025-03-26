@@ -1,12 +1,11 @@
 import os
 import wandb
 import wandb.apis.reports as wr
+import json  # Add this import for json.dumps()
 
 assert os.getenv('WANDB_API_KEY'), 'You must set the WANDB_API_KEY environment variable'
 
 def get_baseline_run(entity='hamelsmu', project='my-report-project', tag='baseline'):
-    "Get the baseline run from the project using tags"
-
     api = wandb.Api()
     runs = api.runs(f'{entity}/{project}', {"tags": {"$in": [tag]}})
     assert len(runs) == 1, 'There must be exactly one run with the tag "baseline"'
@@ -16,9 +15,6 @@ def compare_runs(entity='hamelsmu',
                  project='cicd_demo',
                  tag='baseline',
                  run_id=None):
-    "Compare the current run to the baseline run."
-
-    # Allow you to override the args with env variables
     entity = os.getenv('WANDB_ENTITY') or entity
     project = os.getenv('WANDB_PROJECT') or project
     tag = os.getenv('BASELINE_TAG') or tag
@@ -32,8 +28,11 @@ def compare_runs(entity='hamelsmu',
                        title='Compare Runs',
                        description=f"A comparison of runs, the baseline run name is {baseline.name}") 
 
-    # Filter the runs by ID in the Runset constructor directly
-    runset = wr.Runset(entity, project, "Run Comparison", filters={'ID': {'$in': [run_id, baseline.id]}})
+    # Convert filters dictionary to a valid JSON string
+    filters = json.dumps({'ID': {'$in': [run_id, baseline.id]}})
+    
+    # Use the stringified filter for the Runset constructor
+    runset = wr.Runset(entity, project, "Run Comparison", filters=filters)
 
     # Create a panel with the run comparison
     pg = wr.PanelGrid(
