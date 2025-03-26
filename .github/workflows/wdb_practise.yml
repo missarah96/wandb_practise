@@ -3,12 +3,6 @@ name: excercise-wandb
 on:
   issue_comment:
     types: [created]
-  workflow_dispatch:  # Allow manual triggering
-    inputs:
-      branch:
-        description: 'Branch to run on'
-        required: true
-        default: 'main'  # Default to 'main', can be changed manually
 
 permissions:
   contents: read
@@ -25,8 +19,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install dependencies
-      run: |
-        pip install "wandb[workspaces]" ghapi
+      run: pip install wandb ghapi
 
     - name: Parse value from the command
       id: get-runid-value
@@ -34,7 +27,7 @@ jobs:
       run: |
         import re, os
         comment = os.getenv('PR_COMMENT', '')
-        match = re.search('/wandb[\s+](\S+)', comment)
+        match = re.search(r'/wandb\s+(\S+)', comment)
 
         with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
           if match:
@@ -49,11 +42,12 @@ jobs:
       if: steps.get-runid-value.outputs.VAL_FOUND == 'true'
       id: wandb-report
       run: |
+        python - <<EOF
         import os
         import wandb
         import json
 
-        # Set the environment variables
+        # Set environment variables
         entity = "sarah_s96-university-of-british-columbia"
         project = "lineage-example"
         baseline_run_id = "0fkx3a7z"
@@ -68,27 +62,24 @@ jobs:
         baseline = api.run(f"{entity}/{project}/{baseline_run_id}")
         run = api.run(f"{entity}/{project}/{run_id}")
 
-        # Generate a comparison report (simplified version)
+        # Generate a comparison report
         comparison = {
-            "run_id": run_id,
-            "baseline_run_id": baseline_run_id,
-            "comparison_report": {
-                "run_name": run.name,
-                "baseline_name": baseline.name,
-                "metrics_comparison": {}  # You can add actual metrics comparison logic here
-            }
+          "run_id": run_id,
+          "baseline_run_id": baseline_run_id,
+          "comparison_report": {
+            "run_name": run.name,
+            "baseline_name": baseline.name,
+            "metrics_comparison": {}  # Placeholder for actual metric comparison
+          }
         }
 
-        # Save the comparison as a JSON file or string
-        comparison_json = json.dumps(comparison, indent=4)
-
-        # Save the report URL (replace this logic as needed)
+        # Save the report URL
         report_url = f"https://wandb.ai/{entity}/{project}/runs/{run_id}/comparison?baseline_run_id={baseline_run_id}"
 
         # Output the result to GitHub Actions
         with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
           print(f'REPORT_URL={report_url}', file=f)
-      
+        EOF
       env:
         WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
 
@@ -107,7 +98,7 @@ jobs:
       env:
         REPORT_URL: "${{ steps.wandb-report.outputs.REPORT_URL }}"
 
-    - name: Advanced- label the PR
+    - name: Advanced - Label the PR
       uses: actions/github-script@v6
       if: steps.wandb-report.outcome == 'success'
       with:
