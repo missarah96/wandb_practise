@@ -1,5 +1,8 @@
 name: excercise-wandb
-on: issue_comment
+
+on: 
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -15,8 +18,9 @@ jobs:
     - name: Get repo contents
       uses: actions/checkout@v3
 
-    - name: install dependencies
-      run: pip install ghapi wandb
+    - name: Install dependencies
+      run: |
+        pip install "wandb[workspaces]" ghapi
 
     - name: Parse value from the command
       id: get-runid-value
@@ -48,7 +52,7 @@ jobs:
 
     - name: Make a comment with the GitHub API
       uses: actions/github-script@v6
-      if: steps.wandb-report.outcome == 'success' 
+      if: steps.wandb-report.outcome == 'success'
       with:
         script: |
            var msg = `A comparison between the linked run and baseline is available [in this report](${process.env.REPORT_URL})`
@@ -60,14 +64,14 @@ jobs:
             });
       env:
         REPORT_URL: "${{ steps.wandb-report.outputs.REPORT_URL }}"
-        
-    # This next step if for an advanced version of the workflow    
+
+    # Advanced version to label the PR
     - name: Advanced- label the PR
       uses: actions/github-script@v6
-      if: steps.wandb-report.outcome == 'success' 
+      if: steps.wandb-report.outcome == 'success'
       with:
-        github-token: ${{ secrets.MY_PAT }} # We have to use our own token because we want to trigger another action
-        script: |            
+        github-token: ${{ secrets.MY_PAT }}  # We have to use our own token to trigger the action
+        script: |
             github.rest.issues.addLabels({
               issue_number: context.issue.number,
               owner: context.repo.owner,
