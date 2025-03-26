@@ -1,55 +1,40 @@
-import os
-import wandb
-import wandb.apis.reports as wr
+name: wdb_practise
 
-assert os.getenv('WANDB_API_KEY'), 'You must set the WANDB_API_KEY environment variable'
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-def get_baseline_run(entity='hamelsmu', project='my-report-project', tag='baseline'):
-    "Get the baseline run from the project using tags"
+jobs:
+  run-comparison:
+    runs-on: ubuntu-latest
 
-    api = wandb.Api()
-    runs = api.runs(f'{entity}/{project}', {"tags": {"$in": [tag]}})
-    assert len(runs) == 1, 'There must be exactly one run with the tag "baseline"'
-    return runs[0]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
 
-def compare_runs(entity='hamelsmu',
-                 project='cicd_demo',
-                 tag='baseline',
-                 run_id=None):
-    "Compare the current run to the baseline run."
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.8'
 
-    # Allow you to override the args with env variables
-    entity = os.getenv('WANDB_ENTITY') or entity
-    project = os.getenv('WANDB_PROJECT') or project
-    tag = os.getenv('BASELINE_TAG') or tag
-    run_id = os.getenv('RUN_ID') or run_id
-    assert run_id, 'You must set the RUN_ID environment variable or pass a `run_id` argument'
+      - name: Install dependencies
+        run: |
+          pip install "wandb[workspaces]" ghapi
 
-    baseline = get_baseline_run(entity=entity, project=project, tag=tag)
+      - name: Generate comparison report
+        run: |
+          python ./client/compare_runs.py
+        env:
+          WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
+          WANDB_ENTITY: ${{ secrets.WANDB_ENTITY }}
+          WANDB_PROJECT: ${{ secrets.WANDB_PROJECT }}
+          BASELINE_TAG: baseline
+          RUN_ID: ${{ github.event.pull_request.head.sha }} # Adjust if you need to pass different value for run_id
 
-    # Create the report
-    report = wr.Report(entity=entity, project=project,
-                       title='Compare Runs',
-                       description=f"A comparison of runs, the baseline run name is {baseline.name}") 
-
-    # Filter the runs by ID in the Runset constructor directly
-    runset = wr.Runset(entity, project, "Run Comparison", filters={'ID': {'$in': [run_id, baseline.id]}})
-
-    # Create a panel with the run comparison
-    pg = wr.PanelGrid(
-        runsets=[runset],
-        panels=[wr.RunComparer(diff_only='split', layout={'w': 24, 'h': 15})]
-    )
-
-    # Add the panel to the report
-    report.blocks = report.blocks[:1] + [pg] + report.blocks[1:]
-    report.save()
-
-    if os.getenv('CI'):  # is set to `true` in GitHub Actions
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:  # write the output variable REPORT_URL to the GITHUB_OUTPUT file
-            print(f'REPORT_URL={report.url}', file=f)
-    
-    return report.url
-
-if __name__ == '__main__':
-    print(f'The comparison report can be found at: {compare_runs()}')
+      - name: Output comparison report URL
+        run: |
+          echo "Comparison report URL: ${{ steps.generate-report.outputs.REPORT_URL }}"
