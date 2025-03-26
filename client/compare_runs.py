@@ -1,4 +1,5 @@
-import os, wandb
+import os
+import wandb
 import wandb.apis.reports as wr
 
 assert os.getenv('WANDB_API_KEY'), 'You must set the WANDB_API_KEY environment variable'
@@ -31,10 +32,12 @@ def compare_runs(entity='hamelsmu',
                        title='Compare Runs',
                        description=f"A comparison of runs, the baseline run name is {baseline.name}") 
 
+    # Filter the runs by ID in the Runset constructor directly
+    runset = wr.Runset(entity, project, "Run Comparison", filters={'ID': {'$in': [run_id, baseline.id]}})
+
     # Create a panel with the run comparison
     pg = wr.PanelGrid(
-        runsets=[wr.Runset(entity, project, "Run Comparison").set_filters(
-            f"ID == '{run_id}' or ID == '{baseline.id}'")],
+        runsets=[runset],
         panels=[wr.RunComparer(diff_only='split', layout={'w': 24, 'h': 15})]
     )
 
