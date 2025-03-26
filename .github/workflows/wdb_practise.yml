@@ -45,15 +45,51 @@ jobs:
       env:
         PR_COMMENT: ${{ github.event.comment.body }}
 
-    - name: Generate the comparison report
+    - name: Fetch comparison data and generate report
       if: steps.get-runid-value.outputs.VAL_FOUND == 'true'
       id: wandb-report
-      run: python ./client/compare_runs.py
+      run: |
+        import os
+        import wandb
+        import json
+
+        # Set the environment variables
+        entity = "sarah_s96-university-of-british-columbia"
+        project = "lineage-example"
+        baseline_run_id = "0fkx3a7z"
+        run_id = "${{ steps.get-runid-value.outputs.RUN_ID }}"
+        wandb_api_key = os.getenv('WANDB_API_KEY')
+
+        # Initialize wandb API
+        wandb.login(key=wandb_api_key)
+        api = wandb.Api()
+
+        # Fetch the baseline and the run
+        baseline = api.run(f"{entity}/{project}/{baseline_run_id}")
+        run = api.run(f"{entity}/{project}/{run_id}")
+
+        # Generate a comparison report (simplified version)
+        comparison = {
+            "run_id": run_id,
+            "baseline_run_id": baseline_run_id,
+            "comparison_report": {
+                "run_name": run.name,
+                "baseline_name": baseline.name,
+                "metrics_comparison": {}  # You can add actual metrics comparison logic here
+            }
+        }
+
+        # Save the comparison as a JSON file or string
+        comparison_json = json.dumps(comparison, indent=4)
+
+        # Save the report URL (replace this logic as needed)
+        report_url = f"https://wandb.ai/{entity}/{project}/runs/{run_id}/comparison?baseline_run_id={baseline_run_id}"
+
+        # Output the result to GitHub Actions
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+          print(f'REPORT_URL={report_url}', file=f)
+      
       env:
-        WANDB_ENTITY: sarah_s96-university-of-british-columbia
-        WANDB_PROJECT: lineage-example
-        BASELINE_TAG: baseline
-        RUN_ID: "${{ steps.get-runid-value.outputs.RUN_ID }}"
         WANDB_API_KEY: ${{ secrets.WANDB_API_KEY }}
 
     - name: Make a comment with the GitHub API
